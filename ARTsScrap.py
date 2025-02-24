@@ -4,7 +4,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import time
 import os
-import random
 import json
 import re
 
@@ -29,7 +28,7 @@ def search_ART(browser, art_number):
             warning_message = WebDriverWait(browser, 10).until(
                 EC.presence_of_element_located((By.XPATH, '//span//div[@class="gx-warning-message"]'))
             ).text
-            if warning_message == 'Não localizamos este número de ART no banco de dados.':
+            if warning_message == 'Não localizamos este número de ART no banco de dados.' or warning_message == 'ART ainda não registrada no Crea-RS. Só estão disponíveis para consulta as ARTs registradas.':
                 print('ART not found')
                 return False
             else:
@@ -151,7 +150,6 @@ def collect_titles(browser):
         )
         for title in titles_webelements:
             titles.append(title.text)
-            print("Titles: " + title.text)
         
         return titles
 
@@ -210,7 +208,7 @@ def start_by_last_art(output_json_file):
                 data = json.load(json_file)
                 last_art = data[-1]['Data']['ART']
                 last_art_number = int(re.search(r'\d+', last_art).group())
-                return last_art_number
+                return last_art_number + 1
             except json.JSONDecodeError:
                 return 13406010
     else:
@@ -220,9 +218,11 @@ def main():
     output_json_file = 'art_info.json'
     browser = navigator_initializer()
     art_number = start_by_last_art(output_json_file)
+    count = 0
     while True:
         if search_ART(browser, art_number):
-            time.sleep(5)
+            start_time = time.time()
+            time.sleep(2)
             data = collect_data(browser)
             titles = collect_titles(browser)
             activities = collect_activities(browser)
@@ -232,9 +232,20 @@ def main():
                 'Activities': activities
             }
             save_art_info(art_info, output_json_file)
+            end_time = time.time()
+            print(f'ART {art_number} collected in {end_time - start_time} seconds')
+            print(count)
+        else:
+            art_info = {
+                'Data': {
+                    'ART': str(art_number),
+                    'Situation': 'ART not found'
+                },
+            }
+            save_art_info(art_info, output_json_file)
+            
         art_number = art_number + 1
-    
-    browser.quit()
+        count = count + 1
 
 if __name__ == "__main__":
     main()
