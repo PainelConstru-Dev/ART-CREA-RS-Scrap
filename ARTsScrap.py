@@ -1,4 +1,5 @@
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -9,7 +10,8 @@ import csv
 import time
 
 def navigator_initializer():
-    return webdriver.Firefox()
+    browser = Service('/usr/lib/chromium-browser/chromedriver')
+    return webdriver.Chrome(service=browser)
 
 def search_ARTs(browser, art_number, current_app, art_start):
     while art_number < art_start + 100000:
