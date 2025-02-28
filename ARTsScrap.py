@@ -182,26 +182,32 @@ def collect_activities(browser):
     except:
         print('Error finding activities')
 
-def save_art_info(art_info, output_json_file):
-    existing_data = []
+def save_art_info(art_info):
+    output_json_file = 'art_info.json'
+    
     if os.path.exists(output_json_file) and os.path.getsize(output_json_file) > 0:
-        with open(output_json_file, "r", encoding="utf-8") as json_file:
-            try:
-                existing_data = json.load(json_file)
-            except json.JSONDecodeError:
-                existing_data = []
+        with open(output_json_file, "r+", encoding="utf-8") as json_file:
+            json_file.seek(0, os.SEEK_END)
+            json_file.seek(json_file.tell() - 1, os.SEEK_SET)
+            last_char = json_file.read(1)
+            
+            if last_char == ']':
+                json_file.seek(json_file.tell() - 1, os.SEEK_SET)
+                json_file.truncate()                
+                json_file.seek(json_file.tell() - 2, os.SEEK_SET)
+                json_file.write(',\n')
+
+            
+            json_str = json.dumps(art_info, indent=4, ensure_ascii=False)
+            json_str_with_tab = '\t' + json_str.replace('\n', '\n\t')
+            json_file.write(json_str_with_tab)
+            json_file.write('\n]')
     else:
-        existing_data = []
+        with open(output_json_file, "w", encoding="utf-8") as json_file:
+            json.dump([art_info], json_file, indent=4, ensure_ascii=False)
 
-    if isinstance(art_info, list):
-        existing_data.extend(art_info)
-    else:
-        existing_data.append(art_info)
-
-    with open(output_json_file, "w", encoding="utf-8") as json_file:
-        json.dump(existing_data, json_file, indent=4, ensure_ascii=False)
-
-def start_by_last_art(output_json_file):
+def start_by_last_art():
+    output_json_file = 'art_info.json'
     if os.path.exists(output_json_file) and os.path.getsize(output_json_file) > 0:
         with open(output_json_file, "r", encoding="utf-8") as json_file:
             try:
@@ -215,9 +221,8 @@ def start_by_last_art(output_json_file):
         return 13406010
 
 def main():
-    output_json_file = 'art_info.json'
     browser = navigator_initializer()
-    art_number = start_by_last_art(output_json_file)
+    art_number = start_by_last_art()
     count = 0
     while True:
         if search_ART(browser, art_number):
@@ -231,7 +236,7 @@ def main():
                 'Titles': titles,
                 'Activities': activities
             }
-            save_art_info(art_info, output_json_file)
+            save_art_info(art_info)
             end_time = time.time()
             print(f'ART {art_number} collected in {end_time - start_time} seconds')
             print(count)
@@ -242,7 +247,7 @@ def main():
                     'Situation': 'ART not found'
                 },
             }
-            save_art_info(art_info, output_json_file)
+            save_art_info(art_info)
             
         art_number = art_number + 1
         count = count + 1
