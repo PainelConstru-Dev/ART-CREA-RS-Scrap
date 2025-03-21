@@ -2,17 +2,30 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-import time
 import os
 import json
 import re
+import csv
+import time
 
 def navigator_initializer():
     return webdriver.Firefox()
 
+def search_ARTs(browser, art_number, current_app, art_start):
+    while art_number < art_start + 100000:
+        if search_ART(browser, art_number):
+            data = collect_data(browser)
+            titles = collect_titles(browser)
+            activities = collect_activities(browser)
+            if data == None or titles == None or activities == None:
+                break
+            save_art(data, titles, activities, art_number, True, current_app)
+        else:
+            save_art(None, None, None, art_number, False, current_app)
+        art_number += 1
+
 def search_ART(browser, art_number):
     browser.get('https://servicos.crea-rs.org.br/ServicosPrd/servlet/com.servicos.srv.wbpsrvartres')
-
     try:
         searchbox = WebDriverWait(browser, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, 'input[title="Informe o número da ART"]'))
@@ -22,14 +35,11 @@ def search_ART(browser, art_number):
             EC.presence_of_element_located((By.CSS_SELECTOR, 'img[title="Atualizar"]'))
         )
         update_button.click()
-
         try:
-            time.sleep(2)
             warning_message = WebDriverWait(browser, 10).until(
                 EC.presence_of_element_located((By.XPATH, '//span//div[@class="gx-warning-message"]'))
             ).text
             if warning_message == 'Não localizamos este número de ART no banco de dados.' or warning_message == 'ART ainda não registrada no Crea-RS. Só estão disponíveis para consulta as ARTs registradas.':
-                print('ART not found')
                 return False
             else:
                 return True
@@ -141,6 +151,7 @@ def collect_data(browser):
             }
     except:
         print('Error finding ART data')
+        return None
 
 def collect_titles(browser):
     try:
@@ -155,6 +166,7 @@ def collect_titles(browser):
 
     except:
         print('Error finding titles')
+        return None
 
 def collect_activities(browser):
     try:
@@ -173,84 +185,123 @@ def collect_activities(browser):
                 'Specifical Activity': spec_activity,
                 'Item Description': item,
                 'Quantity': quantity,
-                'Unit': unit,
+                'Unit': unit
                 }
             activities.append(activity)
-            
         return activities
-    
     except:
+        print(activity)
         print('Error finding activities')
+        return None
 
-def save_art_info(art_info):
-    output_json_file = 'art_info.json'
-    
-    if os.path.exists(output_json_file) and os.path.getsize(output_json_file) > 0:
-        with open(output_json_file, "r+", encoding="utf-8") as json_file:
-            json_file.seek(0, os.SEEK_END)
-            json_file.seek(json_file.tell() - 1, os.SEEK_SET)
-            last_char = json_file.read(1)
-            
-            if last_char == ']':
-                json_file.seek(json_file.tell() - 1, os.SEEK_SET)
-                json_file.truncate()                
-                json_file.seek(json_file.tell() - 2, os.SEEK_SET)
-                json_file.write(',\n')
-
-            
-            json_str = json.dumps(art_info, indent=4, ensure_ascii=False)
-            json_str_with_tab = '\t' + json_str.replace('\n', '\n\t')
-            json_file.write(json_str_with_tab)
-            json_file.write('\n]')
+def save_art(data, titles, activities, art_number, found, current_app):
+    if found:
+        art = {
+            'Data': data,
+            'Titles': titles,
+            'Activities': activities,
+        }
     else:
-        with open(output_json_file, "w", encoding="utf-8") as json_file:
-            json.dump([art_info], json_file, indent=4, ensure_ascii=False)
+        art = {
+            'Data': {
+                'ART': str(art_number),
+                'Situation': 'ART not found'
+            },
+        }
+    save_art_info(art, current_app)
 
-def start_by_last_art():
-    output_json_file = 'art_info.json'
-    if os.path.exists(output_json_file) and os.path.getsize(output_json_file) > 0:
-        with open(output_json_file, "r", encoding="utf-8") as json_file:
+def save_art_info(art, current_app):
+    current_archive = get_latest_archive(current_app)
+    if os.path.exists(current_archive) and os.path.getsize(current_archive) > 0:
+        with open(current_archive, "r+", encoding="utf-8") as json_file:
             try:
                 data = json.load(json_file)
+                if len(data) == 2500:
+                    current_number = get_latest_archive_number(current_app) + 1
+                    current_archive = f'data/json{current_app}/art_info_{current_number}.json'
+                    with open(current_archive, "w", encoding="utf-8") as json_file:
+                        json.dump([art], json_file)
+                    data = []
+            except json.JSONDecodeError:
+                data = []
+    else:
+        data = []
+
+    data.append(art)
+    with open(current_archive, "w", encoding="utf-8") as json_file:
+        json.dump(data, json_file, indent=4, ensure_ascii=False)
+
+def start_by_last_art(current_archive):
+    if os.path.exists(current_archive) and os.path.getsize(current_archive) > 0:
+        with open(current_archive, "r", encoding="utf-8") as json_file:
+            try:
+                data = json.load(json_file)
+                if len(data) == 0:
+                    return 12800000
                 last_art = data[-1]['Data']['ART']
                 last_art_number = int(re.search(r'\d+', last_art).group())
                 return last_art_number + 1
             except json.JSONDecodeError:
-                return 13406010
+                return 12800000
     else:
-        return 13406010
+        return 12800000
 
-def main():
+def get_latest_archive(current_app):
+    try:
+        files = os.listdir(f'data/json{current_app}')
+        if not files:
+            new_file = (f'data/json{current_app}/art_info_1.json')
+            with open(new_file, "w", encoding="utf-8") as json_file:
+                json.dump([], json_file)
+            return str(new_file)
+        json_files = [f for f in files if f.startswith('art_info_') and f.endswith('.json')]
+        if not json_files:
+            return None
+        json_files.sort(key=lambda f: int(re.search(r'\d+', f).group()), reverse=True)
+        return str(f"data/json{current_app}/" + json_files[0])
+    except:
+        return None
+    
+def get_latest_archive_number(current_app):
+    try:
+        files = os.listdir(f'data/json{current_app}')
+        if not files:
+            return 1
+        json_files = [f for f in files if f.startswith('art_info_') and f.endswith('.json')]
+        if not json_files:
+            return 1
+        json_files.sort(key=lambda f: int(re.search(r'\d+', f).group()), reverse=True)
+        return int(re.search(r'\d+', json_files[0]).group())
+    except:
+        return 1
+
+def save_data_to_csv(arts):
+    output = 'data/csv/arts_address.csv'
+    existing_data = []
+    if os.path.exists(output) and os.path.getsize(output) > 0:
+        with open(output, "r", encoding="utf-8", newline='') as csv_file:
+            reader = csv.DictReader(csv_file)
+            existing_data = list(reader)
+    
+    if isinstance(arts, list):
+        existing_data.extend(arts)
+    else:
+        existing_data.append(arts)
+    
+    with open(output, "w", encoding="utf-8", newline='') as csv_file:
+        if existing_data:
+            fieldnames = existing_data[0].keys()
+            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(existing_data)
+
+def start_scrap(art_start, current_app):
+    start_time = time.time()
     browser = navigator_initializer()
-    art_number = start_by_last_art()
-    count = 0
-    while True:
-        if search_ART(browser, art_number):
-            start_time = time.time()
-            time.sleep(2)
-            data = collect_data(browser)
-            titles = collect_titles(browser)
-            activities = collect_activities(browser)
-            art_info = {
-                'Data': data,
-                'Titles': titles,
-                'Activities': activities
-            }
-            save_art_info(art_info)
-            end_time = time.time()
-            print(f'ART {art_number} collected in {end_time - start_time} seconds')
-            print(count)
-        else:
-            art_info = {
-                'Data': {
-                    'ART': str(art_number),
-                    'Situation': 'ART not found'
-                },
-            }
-            save_art_info(art_info)
-            
-        art_number = art_number + 1
-        count = count + 1
-
-if __name__ == "__main__":
-    main()
+    current_archive = get_latest_archive(current_app)
+    art = start_by_last_art(current_archive)
+    if art < art_start:
+        art = art_start
+    search_ARTs(browser, art, current_app, art_start)
+    browser.quit()
+    print(f"Time elapsed: {time.time() - start_time}")
