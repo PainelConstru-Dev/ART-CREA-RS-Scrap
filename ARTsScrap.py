@@ -15,6 +15,8 @@ def search_ARTs(browser, art_number, current_app, art_start):
     while art_number < art_start + 100000:
         if search_ART(browser, art_number):
             data = collect_data(browser)
+            if data.get('ART') == "":
+                data = collect_data(browser)
             titles = collect_titles(browser)
             activities = collect_activities(browser)
             if data == None or titles == None or activities == None:
