@@ -2,14 +2,16 @@ from ARTsScrap import *
 
 def get_arts():
     i = 1
-    while i <= 4:
-        files = os.listdir(f'data/json{i}')
+    files = os.listdir(f'data/json1')
+    print(len(files))
+    time.sleep(5)
+    while i <= len(files):
         if not files:
             return None
         for file in files:
             arts = []
             try:
-                with open(f'data/json{i}/{file}', "r", encoding="utf-8") as json_file:
+                with open(f'data/json1/{file}', "r", encoding="utf-8") as json_file:
                     print(f"Reading data from {file}")
                     data = json.load(json_file)
                     for art in data:
